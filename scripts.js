@@ -76,6 +76,14 @@ function Neighbors($target) {
 	return neighbors;
 }
 
+function ValidNeighbors($neighbors) {
+	var output = new Array();
+	for (var i = 0; i < $neighbors.length; i++) {
+		if ($neighbors[i]) output.push($neighbors[i]);
+	}
+	return output;
+}
+
 function GetRemainingUnitsForTurn(turn) {
 	return $("#setting-tiles-turn button[data-reset]").data("level") - GetPlayerTurnFromTurn(turn);
 }
@@ -367,7 +375,8 @@ $(function() {
 	});
 	
 
-	let $firstPiece = $MakePiece(function($spot) {
+	let $firstPiece = $MakePiece(
+	function($spot) {
 		let $board = $spot.closest("div#board");
 		let $previousSpot = $board.data("previous-spot");
 		
@@ -391,8 +400,55 @@ $(function() {
 		// If the board's out of pieces, it's a draw.
 		if (Turn + 1 >= GetBoardUnitCount() || winner)
 			$("body>div#board").attr("disabled", true);
-		
+			
+		if ($("#ai-button").data("active") && GetPlayerIDFromTurn(Turn) == 1 && GetPlayerTurnFromTurn(Turn) == 0) {
+			let $board = $("body>div#board li[data-played='true']");
+			
+			var $firstMove = $();
+			var $secondMove = $();
+			
+			while (!$firstMove.length || !$secondMove.length) {
+				console.log("Looking for pieces!")
+				let $sourcePiece = $board.eq(Math.floor(Math.random() * 100) % $board.length);
+				
+				let $firstPlayableNeighbors = $(ValidNeighbors(Neighbors($sourcePiece))).filter(":not([data-played])");
+				if (!$firstPlayableNeighbors.length) continue;
+				
+				let $firstPickedPiece = $firstPlayableNeighbors.eq(Math.floor(Math.random() * 100) % $firstPlayableNeighbors.length);
+				
+				let $secondPlayableNeighbors = $(ValidNeighbors(Neighbors($firstPickedPiece))).filter(":not([data-played])");
+				if (!$secondPlayableNeighbors.length) continue;
+				
+				console.log("Got pieces!")
+				$firstMove = $firstPickedPiece;
+				$secondMove = $secondPlayableNeighbors.eq(Math.floor(Math.random() * 100) % $secondPlayableNeighbors.length);
+			}
+			
+			let moves = [$firstMove, $secondMove];
+			for (var i = 0; i < moves.length; i++) {
+				let $aPiece = moves[i];
+				let orientation = Math.floor(Math.random() * 100) % 3;
+				let $rotateButton = $aPiece.find("button:not([data-play])").eq(1);
+				
+				while ($aPiece.data("orientation") != orientation) 
+					$rotateButton.trigger("click");
+					
+				$aPiece.find("button[data-play]").trigger("click");
+			}
+			console.log("Played once!")			
+		}
 	});
+	
+	
+	$("#ai-button").click(function(event) {
+		let currentState = $(this).data("active") || false;
+		let newState = !currentState;
+		$(this).text("AI: " + (newState? "ON" : "OFF"));
+		$(this).removeClass(newState? "btn-default" : "btn-warning");
+		$(this).addClass(newState? "btn-warning" : "btn-default");
+		$(this).data("active", newState);
+	})
+	
 	
 	$firstPiece.attr("disabled", false);
 	$("body>div#board").append($("<ul>").append($firstPiece));
