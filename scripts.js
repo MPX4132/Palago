@@ -88,6 +88,67 @@ function GetRemainingUnitsForTurn(turn) {
 	return $("#setting-tiles-turn button[data-reset]").data("level") - GetPlayerTurnFromTurn(turn);
 }
 
+function NextNonexcludedVertex(vertex, excluded) {	
+	let vertexA = vertex.edgeA && vertex.edgeA.destination.data("edge")[vertex.edgeA.vertexID];
+	let vertexB = vertex.edgeB && vertex.edgeB.destination.data("edge")[vertex.edgeB.vertexID];
+	
+	if (vertexA && excluded.indexOf(vertexA) < 0) return vertexA;
+	if (vertexB && excluded.indexOf(vertexB) < 0) return vertexB;
+	
+	return false;
+}
+
+function GetPath(originVertex) {
+	if (!originVertex) return false; // If no vertex was passed, a loop is impossible.
+	
+	// Unfortunately, I couldn't use a hashmap below, since javascript objects aren't easily hashable,
+	// apparently the're ID'd by calling the toString() method... FUCK whoever thought of that.
+	var visited = new Array();
+	var path = new Array();
+	var startVertex = originVertex;
+	
+	do {
+		// Keep track of the path as we search for the start vertex.
+		path.push(startVertex);
+		
+		// Visit the current vertex, by getting source from an edge
+		// Notice that they're both coming form the same vertex, meaning,
+		// source is the same on vertex[0] and vertex[1]...
+		// NOTICE: This is needed to check for 
+		visited.push(startVertex);
+		
+		startVertex = NextNonexcludedVertex(startVertex, visited);
+		
+	} while (startVertex); // If we've still go at least one unvisited vertex, continue searching.
+	
+	// Reverse the path to get accurate order, since we found the start now we head to the end.
+	path.reverse();
+	
+	// Start path search again at the origin, the now last item in path (since it was first originally).
+	var endVertex = NextNonexcludedVertex(originVertex, visited);
+	
+	// If there's no end vertex ready, then the path is complete.
+	if (!endVertex) return path;
+	
+	do {
+		// Keep track of the path as we search for the start vertex.
+		path.push(endVertex);
+		
+		// Visit the current vertex, by getting source from an edge
+		// Notice that they're both coming form the same vertex, meaning,
+		// source is the same on vertex[0] and vertex[1]...
+		// NOTICE: This is needed to check for 
+		visited.push(endVertex);
+		
+		endVertex = NextNonexcludedVertex(endVertex, visited);
+		
+	} while (endVertex); // If we've still go at least one unvisited vertex, continue searching.	
+
+	// At this point, the path's been tracked and is ready.
+
+	return path;
+}
+
 function MarkCircuit(circuit) {
 	for (var i = 0; i < circuit.length; i++) {
 		let vertex = circuit[i];
@@ -221,6 +282,140 @@ function VertexIDForFaceID($piece, faceID) {
 	}
 }
 
+function SpotNeighborsLink($spot, neighbors) {	
+	// Make edges between vertices on valid neighboring tiles.
+	for (var thisFaceID = 0; thisFaceID < neighbors.length; thisFaceID++) {
+		let $neighbor = neighbors[thisFaceID] && $(neighbors[thisFaceID]);
+		
+		// We only setup existing neighbors that are in use, skip the rest.
+		if (!$neighbor || !$neighbor.attr("data-played")) continue;
+		
+		// Determine our neighbor's face facing us (neighbor side connecting us).
+		let thatFaceID = (thisFaceID + 3) % 6;
+		
+		// Determine the vertex we're dealing with, based on the face of the pieces.
+		// These are different since different faces connect to different vertices.
+		let thisVertexID = VertexIDForFaceID($spot, thisFaceID);
+		let thatVertexID = VertexIDForFaceID($neighbor, thatFaceID);
+		
+		let thisVertex = $spot.data("edge")[thisVertexID];
+		let thatVertex = $neighbor.data("edge")[thatVertexID];
+		
+		// Push new edges to both pieces.
+		if (!thisVertex.edgeA) thisVertex.edgeA = {source:$spot, sourceVertexID:thisVertexID, destination:$neighbor, vertexID:thatVertexID};
+		else thisVertex.edgeB = {source:$spot, sourceVertexID:thisVertexID, destination:$neighbor, vertexID:thatVertexID};
+		
+		if (!thatVertex.edgeA) thatVertex.edgeA = {source:$neighbor, sourceVertexID:thatVertexID, destination:$spot, vertexID:thisVertexID};
+		else thatVertex.edgeB = {source:$neighbor, sourceVertexID:thatVertexID, destination:$spot, vertexID:thisVertexID};
+	}
+}
+
+function SpotNeighborsUnlink($spot, neighbors) {		
+	// Make edges between vertices on valid neighboring tiles.
+	for (var thisFaceID = 0; thisFaceID < neighbors.length; thisFaceID++) {
+		let $neighbor = neighbors[thisFaceID] && $(neighbors[thisFaceID]);
+		
+		// We only setup existing neighbors that are in use, skip the rest.
+		if (!$neighbor || !$neighbor.attr("data-played")) continue;
+		
+		// Determine our neighbor's face facing us (neighbor side connecting us).
+		let thatFaceID = (thisFaceID + 3) % 6;
+		
+		// Determine the vertex we're dealing with, based on the face of the pieces.
+		// These are different since different faces connect to different vertices.
+		let thisVertexID = VertexIDForFaceID($spot, thisFaceID);
+		let thatVertexID = VertexIDForFaceID($neighbor, thatFaceID);
+		
+		let thisVertex = $spot.data("edge")[thisVertexID];
+		let thatVertex = $neighbor.data("edge")[thatVertexID];
+		
+		// Null out the vertices if they're used.
+		if (thisVertex.edgeA) thisVertex.edgeA = null;
+		if (thisVertex.edgeB) thisVertex.edgeB = null;
+		
+		// If any verticies are linked to this one, clear them out.
+		if (thatVertex.edgeA && thatVertex.edgeA.destination === $spot) thatVertex.edgeA = null
+		if (thatVertex.edgeB && thatVertex.edgeB.destination === $spot) thatVertex.edgeB = null
+	}
+}
+
+function SpotEvaluation($spot, playerID) {
+	
+	
+	let startY = $spot.index();
+	let startX = $spot.closest("ul").index();
+	
+	
+}
+
+function SimulateMovesByNeighborForPlayerID($startSpot, $neighbor, playerID) {	
+	if (!$startSpot.length) {console.log("No previous spot, can't play..."); return;}
+	
+	let $firstNeighbors = Neighbors($startSpot);
+	let $firstPlayableNeighbors = $(ValidNeighbors($firstNeighbors)).filter(":not([data-played])");
+	
+	if (!$firstPlayableNeighbors.length) {console.log("No playable neighbors, can't play!"); return;}
+	
+	var moves = new Array();
+	
+	var firstMoveWinner = false;
+	var secondMoveWinner = false;
+	
+	$firstPlayableNeighbors.each(function(i) {
+		let $first = $(this).attr("data-played", true); // Set flag temporarily...
+		let $firstRotateButton = $first.find("button:not([data-play])").eq(1);
+		
+		let $secondNeighbors = Neighbors($first);
+		let $secondPlayableNeighbors = $(ValidNeighbors($secondNeighbors)).filter(":not([data-played])");
+		
+		$secondPlayableNeighbors.each(function(j) {
+			let $second = $(this).attr("data-played", true); // Set flag temporarily...
+			let $secondRotateButton = $second.find("button:not([data-play])").eq(1);	
+			
+			for (var firstOrientation = 0; firstOrientation < 3; firstOrientation++) {
+				$firstRotateButton.trigger("click");
+				
+				SpotNeighborsLink($first, $firstNeighbors);
+				
+				firstMoveWinner = GetWinnerFromTarget($first);
+				firstMoveWinner = firstMoveWinner == playerID? $first : false; // Orientation is set on $first.
+				
+				if (!firstMoveWinner) {
+					for (var secondOrientation = 0; secondOrientation < 3; secondOrientation++) {
+						$secondRotateButton.trigger("click");
+						
+						SpotNeighborsLink($second, $secondNeighbors);
+						
+						secondMoveWinner = GetWinnerFromTarget($second);
+						secondMoveWinner = secondMoveWinner == playerID? $second : false; // Orientation is set on $second.
+						
+						SpotNeighborsUnlink($second, $secondNeighbors);
+						
+						if (secondMoveWinner) {
+							firstMoveWinner = $first;
+							break;
+						}
+					}
+				}
+								
+				SpotNeighborsUnlink($first, $firstNeighbors);
+				
+				if (firstMoveWinner) break;
+			}
+			
+			$second.removeAttr("data-played"); // Rest flag
+			if (firstMoveWinner) return false;
+		});
+		
+		$first.removeAttr("data-played"); // Rest flag
+		if (firstMoveWinner) return false;
+	});
+	
+	if (firstMoveWinner && secondMoveWinner) return [firstMoveWinner, secondMoveWinner];
+	if (firstMoveWinner) return [firstMoveWinner];
+	return false;
+}
+
 // Tile Controller Logic ==========================================
 // ================================================================
 function $MakePiece(playable, playedEvent) {
@@ -235,16 +430,16 @@ function $MakePiece(playable, playedEvent) {
 		let $this = $(this);
 		
 		// Get the piece container/slot 
-		let $spot = $this.closest("li");
+		let $spot = $li; //$this.closest("li");
 		
 		// Make sure this spot hasn't already been played.
-		if ($spot.attr("data-played")) return;
+		if ($spot.attr("data-played")) {console.log("Already played, not playable!"); return;};
 		
 		// Get the parent of the spot/slot.
 		let $column = $spot.closest("ul");
 		
 		// If a conditional function was passed, check if the spot is playable.
-		if (playable && !playable($spot)) {console.log("Not playable"); return;}
+		if (playable && !playable($spot)) {console.log("Not playable!"); return;}
 		
 		// Assure board is properly expanded depending on which spot was used.
 		// Check if the left-most column was used and add another column if so.
@@ -287,32 +482,7 @@ function $MakePiece(playable, playedEvent) {
 			if (neighbors[i]) $(neighbors[i]).attr("disabled", false);
 		}
 		
-		
-		// Make edges between vertices on valid neighboring tiles.
-		for (var thisFaceID = 0; thisFaceID < neighbors.length; thisFaceID++) {
-			let $neighbor = neighbors[thisFaceID] && $(neighbors[thisFaceID]);
-			
-			// We only setup existing neighbors that are in use, skip the rest.
-			if (!$neighbor || !$neighbor.attr("data-played")) continue;
-			
-			// Determine our neighbor's face facing us (neighbor side connecting us).
-			let thatFaceID = (thisFaceID + 3) % 6;
-			
-			// Determine the vertex we're dealing with, based on the face of the pieces.
-			// These are different since different faces connect to different vertices.
-			let thisVertexID = VertexIDForFaceID($li, thisFaceID);
-			let thatVertexID = VertexIDForFaceID($neighbor, thatFaceID);
-			
-			let thisVertex = $li.data("edge")[thisVertexID];
-			let thatVertex = $neighbor.data("edge")[thatVertexID];
-			
-			// Push new edges to both pieces.
-			if (!thisVertex.edgeA) thisVertex.edgeA = {source:$li, sourceVertexID:thisVertexID, destination:$neighbor, vertexID:thatVertexID};
-			else thisVertex.edgeB = {source:$li, sourceVertexID:thisVertexID, destination:$neighbor, vertexID:thatVertexID};
-			
-			if (!thatVertex.edgeA) thatVertex.edgeA = {source:$neighbor, sourceVertexID:thatVertexID, destination:$li, vertexID:thisVertexID};
-			else thatVertex.edgeB = {source:$neighbor, sourceVertexID:thatVertexID, destination:$li, vertexID:thisVertexID};
-		}
+		SpotNeighborsLink($spot, neighbors);
 		
 		// Update last played to this one.
 		$board.data("previous-spot", $spot);
@@ -447,6 +617,8 @@ $(function() {
 		$(this).removeClass(newState? "btn-default" : "btn-warning");
 		$(this).addClass(newState? "btn-warning" : "btn-default");
 		$(this).data("active", newState);
+		
+		if (newState) alert("WARNING: This \"dumb AI\" will only work with default settings, sorry, but we ran out of time!");
 	})
 	
 	
