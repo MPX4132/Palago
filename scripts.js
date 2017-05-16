@@ -98,6 +98,24 @@ function NextNonexcludedVertex(vertex, excluded) {
 	return false;
 }
 
+function GetVerticesValue(v1, v2) {
+	if (!v1 || !v2) GetBoardUnitCount();
+	
+	let $tileA = v1.edgeA.source;
+	let $tileB = v2.edgeA.source;
+	
+	let tileAy = $tileA.index();
+	let tileAx = $tileA.closest("ul").index();
+	
+	let tileBy = $tileB.index();
+	let tileBx = $tileB.closest("ul").index();
+	
+	let xOffset = Math.abs(tileAx - tileBx);
+	let yOffset = Math.abs(tileAy - tileBy);
+	
+	return xOffset < yOffset? xOffset : yOffset;
+}
+
 function GetPath(originVertex) {
 	if (!originVertex) return false; // If no vertex was passed, a loop is impossible.
 	
@@ -232,7 +250,7 @@ function GetStraightMaxAdjacentCountFromCircuit(path) {
 	return (globalMaximum > 0)? globalMaximum + 1 : 0;
 }
 
-function GetWinnerFromTarget($target) {
+function GetWinnerFromTarget($target, highlight) {
 	let requiredStraightsMinimal = $("#setting-straights-minimal button[data-reset]").data("level");
 	let requiredStraigthsAdjacent = $("#setting-straights-adjacent button[data-reset]").data("level");
 	
@@ -263,8 +281,8 @@ function GetWinnerFromTarget($target) {
 	
 	//if (playerAWon) for (var x = 0; x < playerACircuit.length; x++) {console.log("PA Marking: " + playerACircuit[x]); MarkCircuit(circuits[playerACircuit[x]]);}
 	//if (playerBWon) for (var y = 0; y < playerBCircuit.length; y++) {console.log("PB Marking: " + playerBCircuit[y]); MarkCircuit(circuits[playerBCircuit[y]]);}
-	if (playerAWon) MarkCircuit(circuits[playerACircuit]);
-	if (playerBWon) MarkCircuit(circuits[playerBCircuit]);
+	if (playerAWon && highlight) MarkCircuit(circuits[playerACircuit]);
+	if (playerBWon && highlight) MarkCircuit(circuits[playerBCircuit]);
 	
 	if (playerAWon && playerBWon) return "Opponent";
 	
@@ -303,10 +321,30 @@ function SpotNeighborsLink($spot, neighbors) {
 		
 		// Push new edges to both pieces.
 		if (!thisVertex.edgeA) thisVertex.edgeA = {source:$spot, sourceVertexID:thisVertexID, destination:$neighbor, vertexID:thatVertexID};
-		else thisVertex.edgeB = {source:$spot, sourceVertexID:thisVertexID, destination:$neighbor, vertexID:thatVertexID};
+		else
+		if (!thisVertex.edgeB) thisVertex.edgeB = {source:$spot, sourceVertexID:thisVertexID, destination:$neighbor, vertexID:thatVertexID};
+		/*else {
+			console.log("No this.edges available:");
+			console.log("EdgeA:");
+			console.log(thisVertex.edgeA);
+			console.log("EdgeB:");
+			console.log(thisVertex.edgeB);
+		}*/
 		
 		if (!thatVertex.edgeA) thatVertex.edgeA = {source:$neighbor, sourceVertexID:thatVertexID, destination:$spot, vertexID:thisVertexID};
-		else thatVertex.edgeB = {source:$neighbor, sourceVertexID:thatVertexID, destination:$spot, vertexID:thisVertexID};
+		else
+		if (!thatVertex.edgeB) thatVertex.edgeB = {source:$neighbor, sourceVertexID:thatVertexID, destination:$spot, vertexID:thisVertexID};
+		/*else {
+			console.log("No that.edges available:");
+			console.log("EdgeA:");
+			console.log(thatVertex.edgeA);
+			console.log("EdgeB:");
+			console.log(thatVertex.edgeB);
+		}*/
+		
+		//console.log("LINKED:");
+		//console.log($spot);
+		//console.log($neighbor);
 	}
 }
 
@@ -317,6 +355,7 @@ function SpotNeighborsUnlink($spot, neighbors) {
 		
 		// We only setup existing neighbors that are in use, skip the rest.
 		if (!$neighbor || !$neighbor.attr("data-played")) continue;
+		//if (!$neighbor) continue;
 		
 		// Determine our neighbor's face facing us (neighbor side connecting us).
 		let thatFaceID = (thisFaceID + 3) % 6;
@@ -329,91 +368,134 @@ function SpotNeighborsUnlink($spot, neighbors) {
 		let thisVertex = $spot.data("edge")[thisVertexID];
 		let thatVertex = $neighbor.data("edge")[thatVertexID];
 		
-		// Null out the vertices if they're used.
-		if (thisVertex.edgeA) thisVertex.edgeA = null;
-		if (thisVertex.edgeB) thisVertex.edgeB = null;
+		// Clear out the vertices if they're used.
+		if (thisVertex.edgeA) thisVertex.edgeA = false;
+		if (thisVertex.edgeB) thisVertex.edgeB = false;
+		
+		//console.log("Attempting to unlink tiles:");
+		//console.log($spot);
+		//console.log($neighbor);
+		
+		//console.log("Unlinked this.edges:");
+		//console.log($spot.data("edge")[thisVertexID].edgeA);
+		//console.log($spot.data("edge")[thisVertexID].edgeB);
 		
 		// If any verticies are linked to this one, clear them out.
-		if (thatVertex.edgeA && thatVertex.edgeA.destination === $spot) thatVertex.edgeA = null
-		if (thatVertex.edgeB && thatVertex.edgeB.destination === $spot) thatVertex.edgeB = null
+		if (thatVertex.edgeA && thatVertex.edgeA.destination === $spot) thatVertex.edgeA = false;
+		if (thatVertex.edgeB && thatVertex.edgeB.destination === $spot) thatVertex.edgeB = false;
+		
+		if (thatVertex.edgeA && thatVertex.edgeB) {
+			console.log("FAILURE: Unable to unlink that.edges,");
+			console.log($spot);
+			console.log($neighbor);
+			console.log($neighbor.data("edge")[thatVertexID].edgeA);
+			console.log($neighbor.data("edge")[thatVertexID].edgeB);
+		}
+		
+		//console.log("Unlinked that.edges:");
+		//console.log($neighbor.data("edge")[thatVertexID].edgeA);
+		//console.log($neighbor.data("edge")[thatVertexID].edgeB);
 	}
 }
 
-function SpotEvaluation($spot, playerID) {
+function GetPathDefensiveValue(path, playerID) {
+	var value = 0;
 	
+	let vertexID = playerID == "Player 1"? [0, 1] : [1, 2];
 	
-	let startY = $spot.index();
-	let startX = $spot.closest("ul").index();
+	for (var i = 0; i < path.length; i++) {
+		let vertex = path[i];
+		
+		if (!vertex.edgeA && !vertex.edgeB) continue;
+		
+		let $vertexSource = vertex.edgeA? vertex.edgeA.source : vertex.edgeB.source;
+		
+		for (var j = 0; j < vertexID.length; j++) {
+			// Notice: If the inversion below is removed this becomes offensive.
+			if (!$vertexSource.data("edge")[vertexID[j]].edgeA) value++;
+			if (!$vertexSource.data("edge")[vertexID[j]].edgeB) value++;
+		}	
+	}
 	
-	
+	return value;
 }
 
-function SimulateMovesByNeighborForPlayerID($startSpot, $neighbor, playerID) {	
-	if (!$startSpot.length) {console.log("No previous spot, can't play..."); return;}
+function SimulateMovesByNeighborForPlayerID($originSpot, $startSpot, playerID, depth) {	
+	if (!$originSpot.length) {console.log("Missing origin point, can't play..."); return;}
+	if (!$startSpot.length) {console.log("Missing start point, can't play..."); return;}
+	if (playerID != "Player 1" && playerID != "Player 2") {console.log("Invalid search player ID!"); return;}
+	if (typeof depth != "number" || depth < 0) {console.log("Invalid search depth!"); return;}
 	
-	let $firstNeighbors = Neighbors($startSpot);
-	let $firstPlayableNeighbors = $(ValidNeighbors($firstNeighbors)).filter(":not([data-played])");
+	if (!depth) return; // Base case
 	
-	if (!$firstPlayableNeighbors.length) {console.log("No playable neighbors, can't play!"); return;}
+	let candiateNeighbors = Neighbors($startSpot);
+
+	let $candidateSpots = $(ValidNeighbors(candiateNeighbors)).filter(":not([data-played])");
 	
-	var moves = new Array();
-	
-	var firstMoveWinner = false;
-	var secondMoveWinner = false;
-	
-	$firstPlayableNeighbors.each(function(i) {
-		let $first = $(this).attr("data-played", true); // Set flag temporarily...
-		let $firstRotateButton = $first.find("button:not([data-play])").eq(1);
+	let candidateVertices = playerID == "Player 1"? [0, 1] : [1, 2];
+
+	var strategy = false;
+
+	if (!$candidateSpots.length) {console.log("No playable neighbors, can't play!"); return;}
+
+	$candidateSpots.each(function(i) {
+		let $candidate = $(this);
+		let $candidateRotationBtn = $candidate.find("button:not([data-play])").eq(1);
+		let neighbors = Neighbors($candidate);
 		
-		let $secondNeighbors = Neighbors($first);
-		let $secondPlayableNeighbors = $(ValidNeighbors($secondNeighbors)).filter(":not([data-played])");
-		
-		$secondPlayableNeighbors.each(function(j) {
-			let $second = $(this).attr("data-played", true); // Set flag temporarily...
-			let $secondRotateButton = $second.find("button:not([data-play])").eq(1);	
+		for (var i = 0; i < 3; i++) {
+			$candidateRotationBtn.trigger("click"); // Rotate to check all orientations.
 			
-			for (var firstOrientation = 0; firstOrientation < 3; firstOrientation++) {
-				$firstRotateButton.trigger("click");
+			// Link and mark as played
+			$candidate.attr("data-played", true); // Set flag temporarily.
+			SpotNeighborsLink($candidate, neighbors);
+			
+			let winnerPlayerID = GetWinnerFromTarget($candidate);
+			
+			// Check if we've got a winning strategy right now.
+			let winningStrategy = winnerPlayerID == playerID? {
+				winner: true, // Defense strategy, not winning strategy.
+				moves: [{target: $candidate, orientation: $candidate.data("orientation")}],
+				value: -1 // Does not matter if it's a winning strategy.
+			} : false;
+			
+			// Only check the current piece-orientation combination if we've got no winner
+			// but skip if the combination yields a winning strategy for the opponent.
+			if (!winningStrategy) {
 				
-				SpotNeighborsLink($first, $firstNeighbors);
-				
-				firstMoveWinner = GetWinnerFromTarget($first);
-				firstMoveWinner = firstMoveWinner == playerID? $first : false; // Orientation is set on $first.
-				
-				if (!firstMoveWinner) {
-					for (var secondOrientation = 0; secondOrientation < 3; secondOrientation++) {
-						$secondRotateButton.trigger("click");
+				if (!winnerPlayerID) {					
+					if (depth > 1) {
+						let longerStrategy = SimulateMovesByNeighborForPlayerID($originSpot, $candidate, playerID, depth - 1);
+						longerStrategy.moves.push({target: $candidate, orientation: $candidate.data("orientation")});
 						
-						SpotNeighborsLink($second, $secondNeighbors);
+						if (!longerStrategy.winner && (!strategy || strategy.value < longerStrategy.value)) strategy = longerStrategy;
 						
-						secondMoveWinner = GetWinnerFromTarget($second);
-						secondMoveWinner = secondMoveWinner == playerID? $second : false; // Orientation is set on $second.
-						
-						SpotNeighborsUnlink($second, $secondNeighbors);
-						
-						if (secondMoveWinner) {
-							firstMoveWinner = $first;
-							break;
+					} else {				
+						for (var j = 0; j < candidateVertices.length; j++) {
+							let path = GetPath($originSpot.data("edge")[candidateVertices[j]]);
+							let candidateDefensiveValue = GetPathDefensiveValue(path, playerID);
+							
+							if (!strategy || strategy.value < candidateDefensiveValue) strategy = {
+								winner: false, // Defense strategy, not winning strategy.
+								moves: [{target: $candidate, orientation: $candidate.data("orientation")}],
+								value: candidateDefensiveValue
+							};
 						}
 					}
-				}
-								
-				SpotNeighborsUnlink($first, $firstNeighbors);
+				} else console.log("Found opponent winning strategy, killing permutations.");
 				
-				if (firstMoveWinner) break;
-			}
+			} else strategy = winningStrategy;
 			
-			$second.removeAttr("data-played"); // Rest flag
-			if (firstMoveWinner) return false;
-		});
-		
-		$first.removeAttr("data-played"); // Rest flag
-		if (firstMoveWinner) return false;
+			
+			// Unlink and unmark as played
+			SpotNeighborsUnlink($candidate, neighbors);
+			$candidate.removeAttr("data-played"); // Reset flag.
+			
+			if (winningStrategy || strategy.winner) return false; // Stop the loop if we've got a winning strategy.
+		}
 	});
 	
-	if (firstMoveWinner && secondMoveWinner) return [firstMoveWinner, secondMoveWinner];
-	if (firstMoveWinner) return [firstMoveWinner];
-	return false;
+	return strategy;
 }
 
 // Tile Controller Logic ==========================================
@@ -433,7 +515,7 @@ function $MakePiece(playable, playedEvent) {
 		let $spot = $li; //$this.closest("li");
 		
 		// Make sure this spot hasn't already been played.
-		if ($spot.attr("data-played")) {console.log("Already played, not playable!"); return;};
+		if ($spot.attr("data-played")) {console.log("Already played, not playable:"); console.log($spot); return;};
 		
 		// Get the parent of the spot/slot.
 		let $column = $spot.closest("ul");
@@ -564,7 +646,7 @@ $(function() {
 	function($spot) {
 		UpdateTurnDisplay(++Turn);
 		
-		let winner = GetWinnerFromTarget($spot);
+		let winner = GetWinnerFromTarget($spot, true);
 		if (winner) alert("The winner is " + winner);
 		
 		// If the board's out of pieces, it's a draw.
@@ -572,40 +654,18 @@ $(function() {
 			$("body>div#board").attr("disabled", true);
 			
 		if ($("#ai-button").data("active") && GetPlayerIDFromTurn(Turn) == 1 && GetPlayerTurnFromTurn(Turn) == 0) {
-			let $board = $("body>div#board li[data-played='true']");
+			let $board = $("body>div#board");
+
+			let $strategy = SimulateMovesByNeighborForPlayerID($board.data("previous-spot"), $board.data("previous-spot"), "Player 2", GetTilesPerTurn());
+			$strategy.moves.reverse(); // Start from the first to last.
 			
-			var $firstMove = $();
-			var $secondMove = $();
-			
-			while (!$firstMove.length || !$secondMove.length) {
-				console.log("Looking for pieces!")
-				let $sourcePiece = $board.eq(Math.floor(Math.random() * 100) % $board.length);
-				
-				let $firstPlayableNeighbors = $(ValidNeighbors(Neighbors($sourcePiece))).filter(":not([data-played])");
-				if (!$firstPlayableNeighbors.length) continue;
-				
-				let $firstPickedPiece = $firstPlayableNeighbors.eq(Math.floor(Math.random() * 100) % $firstPlayableNeighbors.length);
-				
-				let $secondPlayableNeighbors = $(ValidNeighbors(Neighbors($firstPickedPiece))).filter(":not([data-played])");
-				if (!$secondPlayableNeighbors.length) continue;
-				
-				console.log("Got pieces!")
-				$firstMove = $firstPickedPiece;
-				$secondMove = $secondPlayableNeighbors.eq(Math.floor(Math.random() * 100) % $secondPlayableNeighbors.length);
+			for (var i = 0; i < $strategy.moves.length; i++) {
+				let $target = $strategy.moves[i].target;
+				let orientation = $strategy.moves[i].orientation;
+				let $targetRotateBtn = $target.find("button:not([data-play])").eq(1);
+				while ($target.data("orientation") != orientation) $targetRotateBtn.trigger("click");
+				$target.find("button[data-play]").trigger("click");
 			}
-			
-			let moves = [$firstMove, $secondMove];
-			for (var i = 0; i < moves.length; i++) {
-				let $aPiece = moves[i];
-				let orientation = Math.floor(Math.random() * 100) % 3;
-				let $rotateButton = $aPiece.find("button:not([data-play])").eq(1);
-				
-				while ($aPiece.data("orientation") != orientation) 
-					$rotateButton.trigger("click");
-					
-				$aPiece.find("button[data-play]").trigger("click");
-			}
-			console.log("Played once!")			
 		}
 	});
 	
@@ -617,8 +677,6 @@ $(function() {
 		$(this).removeClass(newState? "btn-default" : "btn-warning");
 		$(this).addClass(newState? "btn-warning" : "btn-default");
 		$(this).data("active", newState);
-		
-		if (newState) alert("WARNING: This \"dumb AI\" will only work with default settings, sorry, but we ran out of time!");
 	})
 	
 	
